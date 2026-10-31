@@ -1,26 +1,18 @@
 graph TD
-    Client[Enterprise Web / Mobile App] -->|TLS 1.3 / mTLS| WAF[API Gateway & Enterprise WAF]
-    
-    subgraph Control_Plane [API & Ingress Gateway Layer]
-        WAF -->|gRPC / REST| Auth[OIDC / IAM Workload Identity Proxy]
-        Auth -->|Auth Token Validated| Orchestrator[RAG Orchestration Microservice]
+    Client[Enterprise Web / Mobile App] -->|TLS 1.3 / mTLS| WAF[API Gateway & WAF]
+    WAF -->|gRPC / REST| Auth[Workload Identity Proxy]
+    Auth -->|Validated Token| Orchestrator[RAG Orchestration Microservice]
+
+    subgraph DataPerimeter ["Isolated Enterprise VPC (Private Subnets)"]
+        Orchestrator -->|PII Masking| Guard[Sanitization & Guardrails]
+        Guard -->|Dense Search| VectorDB[(Qdrant Vector Cluster)]
+        Orchestrator -->|Prompt + Context| Router[Inference Router]
+        
+        Router -->|GPU Pool (L4/A100)| vLLM1[vLLM Node 1]
+        Router -->|GPU Pool (L4/A100)| vLLM2[vLLM Node 2]
+        
+        Orchestrator -->|Fallback| ManagedAPI[AWS Bedrock / Vertex AI]
     end
 
-    subgraph Data_Perimeter [Isolated Enterprise VPC / Private Subnets]
-        Orchestrator -->|PII Masking & Tokenization| Guard[Sanitization & Guardrails Engine]
-        Guard -->|Dense Embeddings| VectorDB[(Qdrant Vector Cluster / High Availability)]
-        
-        Orchestrator -->|Prompt + Context| Router[Inference Router & Load Balancer]
-        
-        subgraph Kubernetes_GPU_Pool [GKE / EKS Autoscaling GPU Node Pool]
-            Router -->|Inference Request| vLLM_Node1[vLLM Pod - NVIDIA L4 / A100]
-            Router -->|Inference Request| vLLM_Node2[vLLM Pod - NVIDIA L4 / A100]
-        end
-        
-        Orchestrator -->|Cross-Region Fallback| ManagedAPI[AWS Bedrock / GCP Vertex AI Fallback]
-    end
-
-    subgraph Observability_Governance [Monitoring & Audit Perimeter]
-        vLLM_Node1 -->|Prometheus Metrics| Metrics[Grafana / Prometheus Dashboard]
-        Guard -->|Audit Logs| SIEM[Cloud Logging & OpenTelemetry Collector]
-    end
+    vLLM1 -->|Metrics| Prom[Prometheus & Grafana]
+    Guard -->|Audit Logs| SIEM[OpenTelemetry / SIEM]
